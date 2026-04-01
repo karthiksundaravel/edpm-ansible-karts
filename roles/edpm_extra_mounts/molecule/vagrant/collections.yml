@@ -1,1 +1,3 @@
-../default/collections.yml
+---
+collections:
+- name: community.general

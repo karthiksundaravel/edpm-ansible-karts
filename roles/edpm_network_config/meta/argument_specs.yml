@@ -55,8 +55,31 @@ argument_specs:
         default: true
       edpm_network_config_os_net_config_mappings:
         type: dict
-        description: "Per node and/or per node group configuration map. Used by the edpm_os_net_config_mappings module."
+        description: >
+          Legacy role variable: per-node / node-group NIC mapping for the nmstate path. Merged with
+          edpm_network_config_mappings; the latter wins on duplicate keys. The merged dict is passed
+          to the edpm_os_net_config_mappings Ansible module as net_config_data_lookup.
         default: {}
+      edpm_network_config_mappings:
+        type: dict
+        description: >
+          Optional additional or overriding NIC mapping (nmstate path). Merged with
+          edpm_network_config_os_net_config_mappings; this variable wins on duplicate keys.
+          Must be a YAML mapping (dict). Do not use a block literal (|) after the key — that
+          produces a string and role validation will fail.
+        default: {}
+      edpm_network_config_mapping_file:
+        type: str
+        description: >
+          Host path for the user NIC mapping YAML written by nic_mapping tasks (nmstate tool path only).
+          Empty string when using edpm_network_config_tool os-net-config (this file is not used there).
+        default: ""
+      edpm_network_config_derived_nic_mapping_file:
+        type: str
+        description: >
+          Host path for the resolved interface_mapping (mapped_nics) produced by
+          edpm_derived_nic_mapping.py on the nmstate tool path.
+        default: /etc/edpm/derived_nic_mapping.yaml
       edpm_network_config_purge_provider:
         type: str
         description: >
@@ -77,7 +100,11 @@ argument_specs:
         default: false
       edpm_network_config_template:
         type: str
-        description: "Which settings template should be rendered."
+        description: >
+          Network configuration body (YAML string). For os-net-config this is written to config.yaml.
+          For nmstate (edpm_network_config_tool=nmstate), after derived_nic_mapping.yaml is produced,
+          abstract NIC names (nic1, nic2, ...) are replaced with resolved interface names using word-boundary
+          matching before the template is parsed for linux-system-roles.network.
         default: ""
       edpm_bond_interface_ovs_options:
         type: str

@@ -1,1 +1,4 @@
-../default/collections.yml
+
+collections:
+  - name: community.crypto
+    type: galaxy

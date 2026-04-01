@@ -34,16 +34,16 @@
         state: restarted
       when: nm_ovs_status.changed  # noqa: no-handler
 
-- name: Install os-net-config package
-  when: edpm_network_config_tool == 'os-net-config'
-  become: true
-  ansible.builtin.dnf:
-    name: os-net-config
-    state: present
-  register: edpm_network_config_onc_download
-  until: edpm_network_config_onc_download is succeeded
-  retries: "{{ edpm_network_config_download_retries }}"
-  delay: "{{ edpm_network_config_download_delay }}"
+#- name: Install os-net-config package
+#  when: edpm_network_config_tool == 'os-net-config'
+#  become: true
+#  ansible.builtin.dnf:
+#    name: os-net-config
+#    state: present
+#  register: edpm_network_config_onc_download
+#  until: edpm_network_config_onc_download is succeeded
+#  retries: "{{ edpm_network_config_download_retries }}"
+#  delay: "{{ edpm_network_config_download_delay }}"
 
 - name: Install legacy network packages for os-net-config with ifcfg provider
   when:

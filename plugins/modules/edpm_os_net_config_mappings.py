@@ -43,6 +43,8 @@ description:
     the input data provided. MAC addresses or DMI table strings can be used
     to identify specific nodes or node groups. See manual page for DMIDECODE(8)
     for a list of DMI table strings that can be used.
+  - The EDPM role uses role variables C(edpm_network_config_os_net_config_mappings) (legacy) and
+    C(edpm_network_config_mappings); this module's name is not a role parameter.
 options:
   net_config_data_lookup:
     description:

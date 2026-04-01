@@ -31,12 +31,90 @@
     # For nmstate, always enable NetworkManager DNS management
     edpm_bootstrap_network_resolvconf_update: true
 
+- name: Create EDPM NIC mapping file (nmstate path)
+  become: true
+  vars:
+    edpm_network_config_mapping_file: /etc/edpm/user_nic_mapping.yaml
+  ansible.builtin.import_tasks: nic_mapping.yml
+
+- name: Copy user NIC mapping to derived input and run mapped_nics
+  become: true
+  when: not ansible_check_mode | bool
+  vars:
+    edpm_network_config_mapping_file: /etc/edpm/user_nic_mapping.yaml
+  block:
+    - name: Stat user NIC mapping file
+      ansible.builtin.stat:
+        path: "{{ edpm_network_config_mapping_file }}"
+      register: edpm_user_nic_mapping_stat
+
+    - name: Copy user_nic_mapping.yaml to derived_nic_mapping.yaml
+      ansible.builtin.copy:
+        src: "{{ edpm_network_config_mapping_file }}"
+        dest: "{{ edpm_network_config_derived_nic_mapping_file }}"
+        remote_src: true
+        force: true
+        mode: "0644"
+      when: edpm_user_nic_mapping_stat.stat.exists | default(false)
+
+    - name: Run derived NIC mapping (edpm_derived_nic_mapping.py)
+      ansible.builtin.command:
+        argv:
+          - python3
+          - "{{ role_path }}/files/edpm_derived_nic_mapping.py"
+          - "-f"
+          - "{{ edpm_network_config_derived_nic_mapping_file }}"
+      register: edpm_derived_nic_mapping_result
+
 - name: Configure network with network role from system roles [nmstate]
   become: true
   block:
+    - name: Stat derived NIC mapping file for nmstate template substitution
+      ansible.builtin.stat:
+        path: "{{ edpm_network_config_derived_nic_mapping_file }}"
+      register: edpm_derived_nic_mapping_file_stat
+
+    - name: Read derived NIC mapping for nmstate template substitution
+      ansible.builtin.slurp:
+        path: "{{ edpm_network_config_derived_nic_mapping_file }}"
+      register: edpm_derived_nic_mapping_for_template
+      when:
+        - not ansible_check_mode | bool
+        - edpm_derived_nic_mapping_file_stat.stat.exists | default(false)
+
+    - name: Build interface_mapping dict from derived file
+      ansible.builtin.set_fact:
+        edpm_derived_interface_mapping: >-
+          {{
+            (edpm_derived_nic_mapping_for_template.content | b64decode | from_yaml | default({})).get('interface_mapping', {})
+            if edpm_derived_nic_mapping_for_template is defined
+            and edpm_derived_nic_mapping_for_template.content is defined
+            else {}
+          }}
+
+    - name: Initialize nmstate template string before NIC alias substitution
+      ansible.builtin.set_fact:
+        edpm_network_config_template_resolved: "{{ edpm_network_config_template }}"
+
+    - name: Substitute NIC aliases in edpm_network_config_template from derived mapping
+      ansible.builtin.set_fact:
+        edpm_network_config_template_resolved: >-
+          {{
+            edpm_network_config_template_resolved
+            | regex_replace(
+                '\\b' + (item.key | regex_escape) + '\\b',
+                item.value,
+                multiline=True
+              )
+          }}
+      loop: "{{ edpm_derived_interface_mapping | dict2items | sort(attribute='key') }}"
+      loop_control:
+        label: "{{ item.key }} -> {{ item.value }}"
+      when: edpm_derived_interface_mapping | length > 0
+
     - name: Render network_state variable
       ansible.builtin.set_fact:
-        network_state: "{{ edpm_network_config_template | from_yaml }}"
+        network_state: "{{ edpm_network_config_template_resolved | from_yaml }}"
 
     - name: Load system-roles.network tasks [nmstate]
       ansible.builtin.include_role:

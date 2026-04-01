@@ -54,7 +54,17 @@ edpm_network_config_manage_service: true
 # Note: This only applies when edpm_network_config_tool is 'os-net-config'
 edpm_network_config_nmstate: true
 edpm_network_config_purge_provider: ""
+# NIC mapping for the nmstate path (merged and passed to the edpm_os_net_config_mappings module).
+# Legacy role variable: edpm_network_config_os_net_config_mappings. Additional/overriding mapping:
+# edpm_network_config_mappings (wins on duplicate keys, recursive merge).
 edpm_network_config_os_net_config_mappings: {}
+edpm_network_config_mappings: {}
+
+# Host path for the user NIC mapping YAML (nmstate tool path only; nic_mapping tasks). Default
+# empty: not used when edpm_network_config_tool is os-net-config.
+edpm_network_config_mapping_file: ""
+# Resolved NIC mapping (mapped_nics); written by files/edpm_derived_nic_mapping.py on nmstate path
+edpm_network_config_derived_nic_mapping_file: /etc/edpm/derived_nic_mapping.yaml
 edpm_network_config_safe_defaults: false
 edpm_network_config_template: ""
 edpm_bond_interface_ovs_options: "bond_mode=active-backup"

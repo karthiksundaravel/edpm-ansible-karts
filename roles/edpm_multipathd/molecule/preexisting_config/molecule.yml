@@ -1,1 +1,25 @@
-../default/molecule.yml
+---
+dependency:
+  name: galaxy
+driver:
+  name: delegated
+  options:
+    managed: false
+    ansible_connection_options:
+      ansible_connection: local
+platforms:
+  - name: edpm_multipathd
+provisioner:
+  name: ansible
+  log: true
+scenario:
+  test_sequence:
+  - destroy
+  - create
+  - prepare
+  - converge
+  - check
+  - verify
+  - destroy
+verifier:
+  name: ansible
