@@ -16,11 +16,13 @@
 - name: Prepare test_deps
   hosts: all
   gather_facts: false
+  become: true
   roles:
     - role: ../../../../molecule/common/test_deps
       test_deps_setup_edpm: true
       test_deps_extra_packages:
         - iproute
+        - NetworkManager
 
 - name: Prepare
   hosts: all
@@ -28,6 +30,68 @@
   roles:
     - role: osp.edpm.env_data
   tasks:
+    # linux-system-roles.network + nmstate need NM to manage dummy0. Plain
+    # `ip link` dummies are strictly unmanaged; even nmcli-created dummies can
+    # stay unmanaged unless we override NM policy for this interface.
+    - name: Ensure NetworkManager is installed
+      become: true
+      ansible.builtin.package:
+        name: NetworkManager
+        state: present
+
+    - name: Force NetworkManager to manage dummy0 (avoids strictly unmanaged)
+      become: true
+      ansible.builtin.copy:
+        dest: /etc/NetworkManager/conf.d/zz-molecule-dummy0-managed.conf
+        mode: "0644"
+        content: |
+          [device]
+          match-device=interface-name:dummy0
+          managed=true
+
+    - name: Enable and start NetworkManager
+      become: true
+      ansible.builtin.service:
+        name: NetworkManager
+        state: started
+        enabled: true
+
+    - name: Apply NetworkManager device policy (reload after drop-in)
+      become: true
+      ansible.builtin.service:
+        name: NetworkManager
+        state: restarted
+
+    - name: Create a dummy network interface
+      ansible.builtin.command: "ip link add dummy0 type dummy"
+      register: ip_command_output
+      changed_when: ip_command_output.rc == 0
+      failed_when: ip_command_output.rc != 0
+
+    - name: Create dummy0 via NetworkManager
+      become: true
+      ansible.builtin.command:
+        argv:
+          - nmcli
+          - connection
+          - add
+          - type
+          - dummy
+          - con-name
+          - dummy0
+          - ifname
+          - dummy0
+          - ipv4.method
+          - disabled
+          - ipv6.method
+          - disabled
+      register: nmcli_dummy_add
+      changed_when: nmcli_dummy_add.rc == 0
+      failed_when: >-
+        nmcli_dummy_add.rc | int != 0 and
+        'already' not in (
+          nmcli_dummy_add.stderr | default('') + nmcli_dummy_add.stdout | default('')
+        ) | lower
     - name: Create /etc/dhcp directory
       become: true
       ansible.builtin.file:

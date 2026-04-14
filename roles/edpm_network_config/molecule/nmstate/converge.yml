@@ -34,6 +34,10 @@
               prefix-length: 24
             dhcp: false
             enabled: true
+    # NIC mapping is merged in nic_mapping.yml and written to
+    # /var/lib/edpm-config/template_nic_mapping.yaml (nmstate path); dummy0 is
+    # created in prepare.yml. The MAC must match /sys/class/net/*/address for
+    # edpm_os_net_config_mappings to match.
   pre_tasks:
     - name: Gather user fact
       ansible.builtin.setup:
@@ -47,5 +51,41 @@
         ansible_user: "{{ ansible_user_id | default(lookup('env', 'USER')) }}"
       when:
         - ansible_user is undefined
+
+    - name: Read dummy0 MAC address for NIC mapping
+      ansible.builtin.slurp:
+        path: /sys/class/net/dummy0/address
+      register: edpm_molecule_dummy0_address
+
+    - name: Set NIC mapping lookup so template_nic_mapping.yaml is generated (nic1 -> dummy0)
+      ansible.builtin.set_fact:
+        edpm_network_config_os_net_config_mappings:
+          molecule-default-nic-mapping:
+            nic1: "{{ edpm_molecule_dummy0_address.content | b64decode | trim | lower }}"
   roles:
     - role: osp.edpm.edpm_network_config
+
+- name: Verify EDPM NIC mapping file (nmstate path)
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Stat nmstate NIC mapping file (from nic_mapping + edpm_os_net_config_mappings)
+      ansible.builtin.stat:
+        path: /var/lib/edpm-config/template_nic_mapping.yaml
+      register: edpm_molecule_mapping_stat
+
+    - name: Assert NIC mapping file was written
+      ansible.builtin.assert:
+        that:
+          - edpm_molecule_mapping_stat.stat.exists
+          - edpm_molecule_mapping_stat.stat.size | int > 0
+        fail_msg: Expected /var/lib/edpm-config/template_nic_mapping.yaml from edpm_network_config_os_net_config_mappings
+
+    - name: Slurp mapping file for debug
+      ansible.builtin.slurp:
+        path: /var/lib/edpm-config/template_nic_mapping.yaml
+      register: edpm_molecule_mapping_content
+
+    - name: Show NIC mapping file contents
+      ansible.builtin.debug:
+        msg: "{{ edpm_molecule_mapping_content.content | b64decode }}"
