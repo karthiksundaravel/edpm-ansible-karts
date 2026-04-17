@@ -30,6 +30,7 @@ edpm_network_config_tool: os-net-config
 # Packages needed by nmstate (via system-role)
 edpm_network_config_systemrole_nmstate_dependencies:
   - NetworkManager-ovs
+  - python3-pyyaml
 
 # seconds between retries for download tasks
 edpm_network_config_download_delay: "{{ edpm_download_delay | default(60) }}"
@@ -63,7 +64,7 @@ edpm_network_config_mappings: {}
 # Maintainer note: ansible-playbook extra vars (-e) have higher precedence than set_fact and can
 # still override this name; that is unsupported and may break mapping paths. There is no role-level
 # way to forbid extra vars; avoid documenting this key for operators.
-# Resolved NIC mapping (mapped_nics); written by files/edpm_derived_nic_mapping.py on nmstate path
+# Resolved NIC mapping (mapped_nics); written by files/edpm_derived_nic_mapping.py on nmstate path.
 edpm_network_config_derived_nic_mapping_file: /var/lib/edpm-config/derived_nic_mapping.yaml
 edpm_network_config_safe_defaults: false
 edpm_network_config_template: ""
