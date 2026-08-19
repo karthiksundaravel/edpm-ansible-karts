@@ -124,6 +124,15 @@ argument_specs:
           (PCI ethernet NIC, SR-IOV VF, etc.), its current name, PCI address and bound
           kernel driver. Refreshed after a successful apply (nmstate tool path only).
         default: /var/lib/edpm-config/nmstate_device_map.yaml
+      edpm_network_config_nmstate_skip_unavailable_interfaces:
+        type: bool
+        description: >
+          When true, an nmstate "interfaces" entry whose name is not currently present in
+          sysfs (e.g. already handed to vfio-pci for DPDK/SR-IOV passthrough) is skipped
+          rather than failing the apply, as long as device_map.yaml has a recorded identity
+          for that name. Also drops the name from any bond/bridge port list. Nmstate tool
+          path only.
+        default: true
       edpm_network_config_driver_bind:
         type: str
         description: >

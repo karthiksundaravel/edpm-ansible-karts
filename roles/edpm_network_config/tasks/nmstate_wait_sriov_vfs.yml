@@ -6,6 +6,18 @@
   ansible.builtin.set_fact:
     edpm_nmstate_sriov_pf_wait_list: []
 
+# A PF absent from sysfs (e.g. handed to vfio-pci per device_map, either from a
+# prior edpm_network_config_driver_bind run or externally) was already skipped
+# by the unavailable-interface filter in nmstate_apply_state.yml and never
+# actually applied this run; waiting for its VF count would just time out.
+- name: List current netdevs in sysfs (to skip PFs unavailable this run, e.g. vfio-pci)
+  ansible.builtin.command:
+    argv:
+      - ls
+      - /sys/class/net
+  register: edpm_nmstate_current_netdevs
+  changed_when: false
+
 - name: Build SR-IOV PF wait list from phase-1 nmstate state
   ansible.builtin.set_fact:
     edpm_nmstate_sriov_pf_wait_list: >-
@@ -18,6 +30,7 @@
   loop: "{{ edpm_nmstate_sriov_phase_state.interfaces | default([]) }}"
   when:
     - item.name is defined
+    - item.name in (edpm_nmstate_current_netdevs.stdout_lines | default([]))
     - item.ethernet is defined
     - item.ethernet['sr-iov'] is defined
     - item.ethernet['sr-iov']['total-vfs'] is defined
