@@ -59,3 +59,11 @@
     dest: "{{ edpm_network_config_mapping_file }}"
     mode: "0644"
   when: edpm_os_net_config_mappings_result.mapping is not none
+
+# Not check_mode-gated: this is the only place that can go stale (edpm_derived_nic_mapping.py's
+# own output file is intentionally left alone across runs; see nmstate_tool.yml).
+- name: Remove stale NIC mapping file when nothing matched/configured this run
+  ansible.builtin.file:
+    path: "{{ edpm_network_config_mapping_file }}"
+    state: absent
+  when: edpm_os_net_config_mappings_result.mapping is none

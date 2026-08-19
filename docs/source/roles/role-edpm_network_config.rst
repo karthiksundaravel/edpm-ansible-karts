@@ -225,3 +225,34 @@ does not leave earlier entries half-applied. Once validated, each entry is
 bound with ``driverctl set-override <pci_address> <driver>`` (idempotent:
 if the PCI address is already bound to the requested driver, that entry is
 a no-op). See ``edpm_driver_bind.py``.
+
+Skipping unavailable interfaces (device_map)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A NIC handed to ``vfio-pci`` (via ``edpm_network_config_driver_bind`` in the
+same run, or by an earlier run) is no longer a netdev, so any ``interfaces``
+entry in ``edpm_network_config_template`` / ``edpm_network_config_nmstate_sriov_pf_template``
+that still references it by name would otherwise fail the nmstate apply.
+
+When ``edpm_network_config_nmstate_skip_unavailable_interfaces`` is ``true``
+(the default), such entries are skipped instead of failing: for every
+top-level ``interfaces`` entry whose ``name`` is not currently present in
+sysfs, the role checks ``edpm_network_config_nmstate_device_map_file`` for a
+recorded identity (PCI address) of that name. If found, the entry is
+dropped from the desired state before it is applied (and the name is also
+removed from any bond/bridge ``port``/``ports`` list, so a vanished port
+does not leave a dangling reference). The skip reason printed for
+visibility includes the currently bound driver, looked up live via the
+recorded PCI address (not the possibly-stale ``driver`` value cached in
+device_map.yaml, e.g. if ``edpm_network_config_driver_bind`` rebound it
+earlier in this same run).
+
+If ``name`` is absent from sysfs **and** absent from ``device_map.yaml``,
+the entry is left untouched — there is no evidence this is a known device
+that moved off the host network stack, so nmstate's own validation remains
+the safety net for genuinely wrong or misspelled interface names.
+
+This runs for both phases (SR-IOV PF template and main template); set
+``edpm_network_config_nmstate_skip_unavailable_interfaces: false`` to
+restore strict behavior (fail on any unresolvable interface). See
+``edpm_nmstate_filter_unavailable.py``.
