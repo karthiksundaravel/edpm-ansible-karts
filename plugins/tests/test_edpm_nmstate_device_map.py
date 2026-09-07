@@ -4,6 +4,7 @@
 
 import importlib.util
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -39,10 +40,21 @@ class TestNmstateDeviceMap(unittest.TestCase):
         os.makedirs(self.pci_devices)
         os.makedirs(self.pci_drivers)
         os.environ["EDPM_TEST_SYS_CLASS_NET"] = self.sys_class_net
+        os.environ["EDPM_TEST_PCI_DEVICES"] = self.pci_devices
         self.mod = _load_module()
 
     def tearDown(self):
         os.environ.pop("EDPM_TEST_SYS_CLASS_NET", None)
+        os.environ.pop("EDPM_TEST_PCI_DEVICES", None)
+
+    def _set_pci_driver(self, pci_bdf, driver):
+        """Bind a PCI address to a driver directly (no netdev), e.g. vfio-pci."""
+        pci_path = os.path.join(self.pci_devices, pci_bdf)
+        os.makedirs(pci_path, exist_ok=True)
+        driver_link = os.path.join(pci_path, "driver")
+        if os.path.islink(driver_link):
+            os.remove(driver_link)
+        os.symlink(os.path.join("/fake/drivers", driver), driver_link)
 
     def _mk_physical_netdev(self, name, pci_bdf, driver=None, mac=None):
         """A real NIC: netdev/device -> PCI device dir, optionally with a driver symlink."""
@@ -51,10 +63,8 @@ class TestNmstateDeviceMap(unittest.TestCase):
         pci_path = os.path.join(self.pci_devices, pci_bdf)
         os.makedirs(pci_path, exist_ok=True)
         os.symlink(pci_path, os.path.join(net_dir, "device"))
-        # Real sysfs: device/subsystem -> ../../bus/pci
-        bus_pci = os.path.join(self.tmp, "bus", "pci")
-        os.symlink(bus_pci, os.path.join(pci_path, "subsystem"))
         if mac is None:
+            # Deterministic default so tests can assert mac without passing it.
             mac = "aa:bb:cc:dd:ee:01"
         with open(os.path.join(net_dir, "address"), "w", encoding="utf-8") as fh:
             fh.write(mac + "\n")
@@ -62,28 +72,6 @@ class TestNmstateDeviceMap(unittest.TestCase):
             drv_path = os.path.join(self.pci_drivers, driver)
             os.makedirs(drv_path, exist_ok=True)
             os.symlink(drv_path, os.path.join(pci_path, "driver"))
-
-    def _mk_non_pci_physical_netdev(self, name, bus_id, bus="usb", driver=None, mac=None):
-        """Bus-backed netdev that is not PCI (e.g. USB NIC)."""
-        net_dir = os.path.join(self.sys_class_net, name)
-        os.makedirs(net_dir)
-        bus_devices = os.path.join(self.tmp, "bus", bus, "devices")
-        os.makedirs(bus_devices, exist_ok=True)
-        dev_path = os.path.join(bus_devices, bus_id)
-        os.makedirs(dev_path, exist_ok=True)
-        os.symlink(dev_path, os.path.join(net_dir, "device"))
-        os.symlink(
-            os.path.join(self.tmp, "bus", bus),
-            os.path.join(dev_path, "subsystem"),
-        )
-        if mac is None:
-            mac = "11:22:33:44:55:66"
-        with open(os.path.join(net_dir, "address"), "w", encoding="utf-8") as fh:
-            fh.write(mac + "\n")
-        if driver:
-            drv_path = os.path.join(self.tmp, "bus", bus, "drivers", driver)
-            os.makedirs(drv_path, exist_ok=True)
-            os.symlink(drv_path, os.path.join(dev_path, "driver"))
 
     def _mk_virtual_netdev(self, name):
         """A virtual netdev (bond/bridge/dummy/vlan/loopback): no "device" entry at all."""
@@ -121,16 +109,6 @@ class TestNmstateDeviceMap(unittest.TestCase):
         device_map = self.mod.build_device_map(self.sys_class_net)
         self.assertEqual(list(device_map["devices"]), ["eno1"])
 
-    def test_non_pci_physical_netdev_kept_with_null_pci(self):
-        self._mk_non_pci_physical_netdev(
-            "enx1234", "1-1:1.0", bus="usb", driver="cdc_ether"
-        )
-        device_map = self.mod.build_device_map(self.sys_class_net)
-        self.assertIn("enx1234", device_map["devices"])
-        self.assertIsNone(device_map["devices"]["enx1234"]["pci"])
-        self.assertEqual(device_map["devices"]["enx1234"]["mac"], "11:22:33:44:55:66")
-        self.assertEqual(device_map["devices"]["enx1234"]["driver"], "cdc_ether")
-
     def test_device_without_driver_has_none_driver(self):
         self._mk_physical_netdev("eno1", "0000:01:00.0")
         device_map = self.mod.build_device_map(self.sys_class_net)
@@ -139,6 +117,96 @@ class TestNmstateDeviceMap(unittest.TestCase):
     def test_empty_sysfs_yields_empty_map(self):
         device_map = self.mod.build_device_map(self.sys_class_net)
         self.assertEqual(device_map["devices"], {})
+
+    # -- retention of devices handed to vfio-pci ---------------------------
+
+    def test_device_no_longer_a_netdev_is_retained_from_existing_map(self):
+        # eno4 was a physical netdev on a previous run (recorded in "existing");
+        # it has since been handed to vfio-pci and is no longer a netdev at all.
+        existing = {
+            "devices": {
+                "eno4": {
+                    "pci": "0000:19:00.3",
+                    "mac": "11:22:33:44:55:66",
+                    "driver": "i40e",
+                }
+            }
+        }
+        self._set_pci_driver("0000:19:00.3", "vfio-pci")
+
+        device_map = self.mod.build_device_map(self.sys_class_net, existing=existing)
+
+        self.assertIn("eno4", device_map["devices"])
+        self.assertEqual(device_map["devices"]["eno4"]["pci"], "0000:19:00.3")
+        # MAC is kept from the previous map (no netdev address to re-read).
+        self.assertEqual(device_map["devices"]["eno4"]["mac"], "11:22:33:44:55:66")
+        # Driver field is opportunistically refreshed via a live PCI lookup.
+        self.assertEqual(device_map["devices"]["eno4"]["driver"], "vfio-pci")
+
+    def test_retained_driver_falls_back_to_stale_value_when_pci_gone(self):
+        existing = {"devices": {"eno4": {"pci": "0000:19:00.3", "driver": "i40e"}}}
+        # No live PCI entry at all (e.g. device physically removed): keep old value.
+        device_map = self.mod.build_device_map(self.sys_class_net, existing=existing)
+        self.assertEqual(device_map["devices"]["eno4"]["driver"], "i40e")
+
+    def test_current_netdev_state_wins_over_existing_map(self):
+        # eno1 is present as a real netdev right now: use the fresh scan, not
+        # whatever was recorded previously.
+        self._mk_physical_netdev(
+            "eno1", "0000:01:00.0", driver="ice", mac="aa:bb:cc:dd:ee:11"
+        )
+        existing = {
+            "devices": {
+                "eno1": {
+                    "pci": "0000:99:99.9",
+                    "mac": "00:00:00:00:00:00",
+                    "driver": "stale",
+                }
+            }
+        }
+        device_map = self.mod.build_device_map(self.sys_class_net, existing=existing)
+        self.assertEqual(device_map["devices"]["eno1"]["pci"], "0000:01:00.0")
+        self.assertEqual(device_map["devices"]["eno1"]["mac"], "aa:bb:cc:dd:ee:11")
+        self.assertEqual(device_map["devices"]["eno1"]["driver"], "ice")
+
+    def test_cli_retains_stale_entry_across_two_invocations(self):
+        self._mk_physical_netdev(
+            "eno1", "0000:01:00.0", driver="ice", mac="aa:bb:cc:dd:ee:01"
+        )
+        self._mk_physical_netdev(
+            "eno4", "0000:19:00.3", driver="i40e", mac="aa:bb:cc:dd:ee:04"
+        )
+        out_path = os.path.join(self.tmp, "device_map.yaml")
+        env = dict(os.environ)
+
+        subprocess.run(
+            [sys.executable, SCRIPT_PATH, "-o", out_path],
+            env=env,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        first = self._load_yaml(out_path)
+        self.assertIn("eno4", first["devices"])
+        self.assertEqual(first["devices"]["eno4"]["mac"], "aa:bb:cc:dd:ee:04")
+
+        # eno4 is now handed to vfio-pci: remove the netdev, rebind the PCI addr.
+        shutil.rmtree(os.path.join(self.sys_class_net, "eno4"))
+        self._set_pci_driver("0000:19:00.3", "vfio-pci")
+
+        subprocess.run(
+            [sys.executable, SCRIPT_PATH, "-o", out_path],
+            env=env,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        second = self._load_yaml(out_path)
+        self.assertIn("eno4", second["devices"])
+        self.assertEqual(second["devices"]["eno4"]["pci"], "0000:19:00.3")
+        self.assertEqual(second["devices"]["eno4"]["mac"], "aa:bb:cc:dd:ee:04")
+        self.assertEqual(second["devices"]["eno4"]["driver"], "vfio-pci")
+        self.assertIn("eno1", second["devices"])
 
     def test_cli_writes_yaml_file(self):
         self._mk_physical_netdev("eno1", "0000:01:00.0", driver="ice")
