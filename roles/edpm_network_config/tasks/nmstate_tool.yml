@@ -212,10 +212,11 @@
           when: edpm_network_config_nmstate_sriov_vf_wait | bool
           block:
             # network_state was set by nmstate_apply_state.yml for phase 1
-            # (already NIC-alias substituted); reuse it instead of re-parsing.
+            # (edpm_safe_from_yaml + NIC-alias substituted); reuse it.
             - name: Use phase-1 network_state for VF wait
               ansible.builtin.set_fact:
                 edpm_nmstate_sriov_phase_state: "{{ network_state }}"
+
 
             - name: Wait until sysfs reports expected SR-IOV VF counts
               ansible.builtin.include_tasks: nmstate_wait_sriov_vfs.yml
