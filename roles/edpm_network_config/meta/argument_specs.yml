@@ -114,7 +114,10 @@ argument_specs:
         description: >
           Path to nmstate device_map.yaml recording, for every physical network device
           (PCI ethernet NIC, SR-IOV VF, etc.), its current name, PCI address, MAC
-          address, and bound kernel driver. Refreshed after a successful apply (nmstate tool path only).
+          address, and bound kernel driver. Refreshed after a successful apply; also
+          consulted by edpm_derived_nic_mapping.py to keep a nicN alias stable when its
+          target has left sysfs for a confirmed reason such as vfio-pci passthrough
+          (nmstate tool path only).
         default: /var/lib/edpm-config/nmstate_device_map.yaml
       edpm_bond_interface_ovs_options:
         type: str
