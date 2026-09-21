@@ -75,14 +75,16 @@ edpm_network_config_mappings: {}
 # still override this name; that is unsupported and may break mapping paths. There is no role-level
 # way to forbid extra vars; avoid documenting this key for operators.
 # Resolved NIC mapping (mapped_nics); written by files/edpm_derived_nic_mapping.py on nmstate path.
-# Removed on derive failure so unresolved MAC/name values are not reused for alias substitution.
+# Left unchanged on derive failure so the last good passthrough/auto_aliases state is kept.
 edpm_network_config_derived_nic_mapping_file: /var/lib/edpm-config/derived_nic_mapping.yaml
+# Path to nmstate device_map.yaml: name -> PCI address/MAC/driver for physical
+# network devices (nmstate tool path only). Refreshed after a successful apply;
+# retains names whose netdev left sysfs while the PCI BDF remains vfio-pci bound.
+# Consulted by edpm_derived_nic_mapping.py to keep nicN aliases stable across
+# passthrough runs; also used by driver_bind when the netdev is no longer present.
+edpm_network_config_nmstate_device_map_file: /var/lib/edpm-config/nmstate_device_map.yaml
 edpm_network_config_safe_defaults: false
 edpm_network_config_template: ""
-# Path to nmstate device_map.yaml: name -> PCI address/MAC/driver for physical
-# network devices (nmstate tool path only). Refreshed after a successful apply.
-# Also used by driver_bind as a fallback when the netdev is no longer present.
-edpm_network_config_nmstate_device_map_file: /var/lib/edpm-config/nmstate_device_map.yaml
 # Phase 1 (optional): nmstate YAML to create SR-IOV VFs on PF(s) (total-vfs only).
 # Per-VF vfs settings belong in edpm_network_config_template (phase 2).
 edpm_network_config_nmstate_sriov_pf_template: ""
