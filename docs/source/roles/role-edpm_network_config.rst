@@ -214,7 +214,8 @@ driver).
 
 Each entry is ``{name, pci_address, driver}``. ``name`` may be a real
 interface name or an EDPM NIC alias (``nic1``, ``nic2``, ...); aliases are
-resolved from the derived NIC mapping before the bind input is written.
+resolved from the derived NIC mapping before ``.driver_bind_in.yaml`` is
+written.
 
 .. code-block:: yaml
 
