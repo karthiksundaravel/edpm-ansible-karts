@@ -203,3 +203,41 @@ Host SR-IOV in nmstate configures the PF and VFs on the node. Nova
 ``pci_passthrough:device_spec`` for SR-IOV instances is a separate step: use
 the ``edpm_derive_pci_device_spec`` role and ``neutron_sriov`` playbook
 (``physical_device_mappings`` on the agent) together with this network config.
+
+PCI driver binding (driverctl)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+On the nmstate tool path only, set ``edpm_network_config_driver_bind`` to bind
+a kernel driver at a PCI address **before** the main nmstate apply (for
+example hand a NIC to ``vfio-pci`` for DPDK, or return it to its native
+driver).
+
+Each entry is ``{name, pci_address, driver}``. ``name`` may be a real
+interface name or an EDPM NIC alias (``nic1``, ``nic2``, ...); aliases are
+resolved from the derived NIC mapping before the bind input is written.
+
+.. code-block:: yaml
+
+    edpm_network_config_driver_bind: |
+      ---
+      interfaces:
+        - name: nic2
+          pci_address: "0000:8a:00.0"
+          driver: vfio-pci
+
+For every entry, the role confirms that ``name`` identifies ``pci_address``:
+
+* If the netdev is present in sysfs, its live PCI address must match
+  ``pci_address``. A mismatch fails the run.
+* If the netdev is absent (for example already unbound from the host
+  stack), the role falls back to
+  ``edpm_network_config_nmstate_device_map_file``. A recorded PCI for
+  ``name`` that does not match ``pci_address`` still fails the run.
+* If neither sysfs nor the device map has ``name``, the declared
+  ``pci_address`` is trusted and binding proceeds.
+
+All entries are validated before any bind runs, so one bad entry cannot
+leave earlier entries half-applied. Each validated entry is applied with
+``driverctl set-override <pci_address> <driver>`` (idempotent if that PCI
+address is already on the requested driver). See ``edpm_driver_bind.py`` and
+``driver_bind.yml``.
