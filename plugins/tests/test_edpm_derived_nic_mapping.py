@@ -90,18 +90,17 @@ class TestEdpmDerivedNicMapping(unittest.TestCase):
             self._derive({"nic1": "eno1np0"}, device_map=device_map)
         self.assertIn("unresolved NIC mapping", str(ctx.exception))
 
-    def test_user_mapped_absent_nic_kept_when_device_map_empty(self):
-        # Bootstrap / adopt: no device_map snapshot yet, operator still maps a
-        # NIC already off sysfs (e.g. pre-bound vfio). Keep the name so derive
-        # does not deadlock before the map can be written after apply.
+    def test_fails_user_mapped_absent_nic_when_device_map_empty(self):
+        # Empty device_map: cannot confirm vfio-pci. Do not trust an operator
+        # name that is absent from sysfs (typos must fail).
         self._mk_nic("eno1np0", "e4:43:4b:5c:96:60")
-        result, auto = self._derive(
-            {"nic1": "eno1np0", "nic3": "eno3np2"},
-            device_map={},
-        )
-        self.assertEqual(result["nic3"], "eno3np2")
-        self.assertEqual(result["nic1"], "eno1np0")
-        self.assertEqual(auto, [])
+        with self.assertRaises(ValueError) as ctx:
+            self._derive(
+                {"nic1": "eno1np0", "nic3": "eno3np2"},
+                device_map={},
+            )
+        self.assertIn("unresolved NIC mapping", str(ctx.exception))
+        self.assertIn("nic3=eno3np2", str(ctx.exception))
 
     def test_auto_numbers_unmapped_active_nics(self):
         self._mk_nic("eno1np0", "e4:43:4b:5c:96:60")

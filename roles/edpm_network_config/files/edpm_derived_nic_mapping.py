@@ -150,12 +150,6 @@ def _device_map_pci(device_map: Optional[dict], name: str) -> Optional[str]:
     return info.get("pci") if isinstance(info, dict) else None
 
 
-def _device_map_has_devices(device_map: Optional[dict]) -> bool:
-    """True when device_map.yaml has at least one recorded physical device."""
-    devices = (device_map or {}).get("devices") or {}
-    return isinstance(devices, dict) and bool(devices)
-
-
 def _device_map_name_for_mac(
     device_map: Optional[dict], mac_norm: str
 ) -> Optional[str]:
@@ -233,10 +227,9 @@ def derive_nic_mapping(
     :param device_map: parsed nmstate device_map.yaml (name -> pci/mac/driver),
         used to confirm a NIC absent from sysfs was handed to vfio-pci rather
         than genuinely removed/renamed/misconfigured. MAC lookups consult the
-        recorded mac field when the netdev is gone. When devices is empty
-        (first run / no snapshot yet), an operator name mapping for a NIC
-        absent from sysfs is kept so derive does not deadlock before the map
-        can be written; MAC mappings still need a live NIC or a map entry.
+        recorded mac field when the netdev is gone. An absent name that is not
+        confirmed vfio-pci (including when the map is empty) is unresolved —
+        operator typos are not trusted.
     :param previous_auto_aliases: aliases this role auto-assigned last run
         (persisted as auto_aliases: in derived_nic_mapping.yaml). Only those
         are eligible for previous_mapping retention.
@@ -283,18 +276,9 @@ def derive_nic_mapping(
                 nm,
             )
             return nm
-        # No device_map snapshot yet: cannot confirm vfio, but failing here
-        # blocks apply and the post-apply map refresh forever on adopt/upgrade
-        # nodes where the NIC is already off the host stack. Trust the
-        # operator name until a map exists; typos of live NICs still fail above.
-        if not _device_map_has_devices(device_map):
-            LOG.info(
-                "%s => %s (not present in sysfs; device_map empty, keeping "
-                "user mapping for bootstrap)",
-                nic_alias,
-                nm,
-            )
-            return nm
+        # Absent from sysfs and not confirmed vfio-pci (empty device_map or
+        # no matching entry): do not trust the operator name — treat as
+        # unresolved so typos like nic2: eno2np8 fail the run.
         LOG.error(
             "nic %s not found in available nics %s", nic_mapped, ", ".join(available_nics)
         )
