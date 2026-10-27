@@ -22,17 +22,21 @@
         | osp.edpm.edpm_substitute_nic_aliases(edpm_nmstate_apply_interface_mapping | default({}))
       }}
 
+# Always show the resolved desired state (aliases already substituted) for every
+# phase, including SR-IOV phase 1 which goes through the full system-roles path.
+- name: Display nmstate desired state to apply - {{ edpm_nmstate_apply_phase }}
+  ansible.builtin.debug:
+    # splitlines so the default callback prints real YAML lines, not \n-escaped text
+    msg: "{{ network_state | to_nice_yaml(indent=2).splitlines() }}"
+
 - name: Load system-roles.network tasks - {{ edpm_nmstate_apply_phase }}
   ansible.builtin.include_role:
     name: "{{ lookup('ansible.builtin.env', 'EDPM_SYSTEMROLES', default='fedora.linux_system_roles') + '.network' }}"
   register: edpm_nmstate_apply_result
   when: not (edpm_nmstate_apply_skip_role_setup | default(false))
 
-# Use action/args so the module FQCN is templated at runtime. A Jinja module key
-# is not resolved by ansible-core (seen with 2.21) and fails playbook parse.
-- name: Apply nmstate state directly (role setup already done earlier this run) - {{ edpm_nmstate_apply_phase }}
-  action: "{{ lookup('ansible.builtin.env', 'EDPM_SYSTEMROLES', default='fedora.linux_system_roles') }}.network_state"
-  args:
-    desired_state: "{{ network_state }}"
-  register: edpm_nmstate_apply_result
+# Direct network_state call lives in nmstate_apply_direct.yml so this file's
+# include during phase 1 never parses the templated action FQCN (plugin-load warning).
+- name: Apply nmstate state directly - {{ edpm_nmstate_apply_phase }}
+  ansible.builtin.include_tasks: nmstate_apply_direct.yml
   when: edpm_nmstate_apply_skip_role_setup | default(false)
