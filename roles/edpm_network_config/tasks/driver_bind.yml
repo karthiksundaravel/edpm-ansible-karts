@@ -9,6 +9,8 @@
 #
 # NIC aliases (nic1, nic2, ...) in "name" are resolved via the derived
 # interface_mapping before the file is written, same as nmstate templates.
+#
+# Privilege: caller (nmstate_tool.yml) sets become via include_tasks apply.
 
 - name: Ensure /var/lib/edpm-config exists
   ansible.builtin.file:
@@ -54,7 +56,6 @@
     mode: "0644"
 
 - name: Validate and bind PCI drivers
-  become: true
   ansible.builtin.command:
     argv:
       - python3

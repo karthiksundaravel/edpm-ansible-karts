@@ -69,8 +69,8 @@ When ``edpm_network_config_tool`` is ``nmstate``, the role applies
 ``linux_system_roles.network`` role (see ``nmstate_tool.yml``).
 NetworkManager is configured to manage ``/etc/resolv.conf`` on this path.
 
-The nmstate tool is experimental. Set ``edpm_network_config_tool: nmstate``
-and ``edpm_network_config_update: true`` (or rely on first-run / failed-run
+Set ``edpm_network_config_tool: nmstate`` and
+``edpm_network_config_update: true`` (or rely on first-run / failed-run
 logic) so the template is applied.
 
 Templates may use real kernel interface names (for example ``eno12399np0``)

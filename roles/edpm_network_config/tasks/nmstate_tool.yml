@@ -153,8 +153,19 @@
     - edpm_network_config_driver_bind | trim | length > 0
 
 - name: Validate and bind PCI drivers before applying network state
-  ansible.builtin.include_tasks: driver_bind.yml
-  when: edpm_network_config_driver_bind | trim | length > 0
+  # All driver_bind.yml tasks need root; escalate once on the include.
+  ansible.builtin.include_tasks:
+    file: driver_bind.yml
+    apply:
+      become: true
+  # Same apply gate as the nmstate configure block below: do not rebind NICs
+  # on a no-op run (update false and prior apply succeeded).
+  when:
+    - edpm_network_config_driver_bind | trim | length > 0
+    - (edpm_network_config_update) or
+      (nmstate_returncode_stat.stat.exists and
+      ((nmstate_returncode_slurp.content | b64decode | int) != 0)) or
+      (not nmstate_returncode_stat.stat.exists)
 
 - name: Configure network with network role from system roles [nmstate]
   become: true

@@ -23,7 +23,7 @@
 # Accepted values are:
 # * os-net-config (default) -> the os-net-config tool will be used
 #   - Can use either ifcfg or nmstate as internal provider based on edpm_network_config_nmstate
-# * nmstate (experimental, unsupported) -> the network role from linux-system-roles/rhel-system-roles will be used
+# * nmstate -> the network role from linux-system-roles/rhel-system-roles will be used
 #   directly to configure networking on hosts. Refer to nmstate.io for configuration snippets.
 edpm_network_config_tool: os-net-config
 
