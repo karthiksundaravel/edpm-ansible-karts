@@ -27,7 +27,7 @@
 - name: Display nmstate desired state to apply - {{ edpm_nmstate_apply_phase }}
   ansible.builtin.debug:
     # splitlines so the default callback prints real YAML lines, not \n-escaped text
-    msg: "{{ network_state | to_nice_yaml(indent=2).splitlines() }}"
+    msg: "{{ (network_state | to_nice_yaml(indent=2)).splitlines() }}"
 
 - name: Load system-roles.network tasks - {{ edpm_nmstate_apply_phase }}
   ansible.builtin.include_role:
