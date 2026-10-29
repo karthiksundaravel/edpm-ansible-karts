@@ -230,14 +230,14 @@ written.
 
 For every entry, the role confirms that ``name`` identifies ``pci_address``:
 
-* If the netdev is present in sysfs, its live PCI address must match
-  ``pci_address``. A mismatch fails the run.
-* If the netdev is absent (for example already unbound from the host
-  stack), the role falls back to
+* If ``name`` is a physical netdev in sysfs (has a ``device`` symlink),
+  its live PCI address must match ``pci_address``. A mismatch fails the run.
+* If ``name`` is not a physical netdev (absent, or a virtual interface such
+  as a bridge), the role falls back to
   ``edpm_network_config_nmstate_device_map_file``. A recorded PCI for
-  ``name`` that does not match ``pci_address`` still fails the run.
-* If neither sysfs nor the device map has ``name``, the declared
-  ``pci_address`` is trusted and binding proceeds.
+  ``name`` must match ``pci_address``; a mismatch fails the run.
+* If neither a live physical netdev nor a device-map PCI entry can confirm
+  ``name``, the run fails (the declared ``pci_address`` is not trusted).
 
 All entries are validated before any bind runs, so one bad entry cannot
 leave earlier entries half-applied. Each validated entry is applied with

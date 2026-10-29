@@ -127,13 +127,25 @@ class TestEdpmDriverBind(unittest.TestCase):
         self.assertEqual(len(errors), 1)
         self.assertIn("device_map.yaml records", errors[0])
 
-    def test_validation_passes_when_absent_from_both(self):
+    def test_validation_fails_when_absent_from_both(self):
         errors = self.mod.validate_interfaces(
             [{"name": "eno1", "pci_address": "0000:99:00.0", "driver": "vfio-pci"}],
             self.sys_class_net,
             {},
         )
-        self.assertEqual(errors, [])
+        self.assertEqual(len(errors), 1)
+        self.assertIn("cannot confirm pci_address", errors[0])
+
+    def test_validation_fails_for_existing_non_physical_netdev(self):
+        # Bridge/bond/etc.: present in sysfs but no device/ symlink.
+        os.makedirs(os.path.join(self.sys_class_net, "br-ex"))
+        errors = self.mod.validate_interfaces(
+            [{"name": "br-ex", "pci_address": "0000:8a:00.0", "driver": "vfio-pci"}],
+            self.sys_class_net,
+            {},
+        )
+        self.assertEqual(len(errors), 1)
+        self.assertIn("not a physical netdev", errors[0])
 
     def test_validation_passes_when_device_map_matches(self):
         device_map = {"devices": {"eno1": {"pci": "0000:99:00.0"}}}
@@ -176,7 +188,9 @@ class TestEdpmDriverBind(unittest.TestCase):
         template = self._write_template(
             [{"name": "eno12399np0", "pci_address": "0000:8a:00.0", "driver": "vfio-pci"}]
         )
-        map_path = self._write_device_map({})
+        map_path = self._write_device_map(
+            {"eno12399np0": {"pci": "0000:8a:00.0"}}
+        )
 
         result = subprocess.run(
             [sys.executable, SCRIPT_PATH, "-f", template, "-m", map_path],
@@ -206,7 +220,7 @@ class TestEdpmDriverBind(unittest.TestCase):
                 "    pci_address: 0000:19:00.1\n"
                 "    driver: vfio-pci\n"
             )
-        map_path = self._write_device_map({})
+        map_path = self._write_device_map({"nic2": {"pci": "0000:19:00.1"}})
 
         result = subprocess.run(
             [sys.executable, SCRIPT_PATH, "-f", template_path, "-m", map_path],

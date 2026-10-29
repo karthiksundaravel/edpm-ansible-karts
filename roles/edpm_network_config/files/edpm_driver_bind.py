@@ -4,9 +4,9 @@
 #
 # Validate and apply edpm_network_config_driver_bind entries: for each
 # {name, pci_address, driver} tuple, confirm that "name" really identifies
-# "pci_address" (using live sysfs first, falling back to the persisted
-# nmstate device_map.yaml when the netdev is no longer present, e.g. it was
-# already unbound from the kernel network stack), then bind "driver" at
+# "pci_address" (live physical netdev in sysfs first, else persisted
+# nmstate device_map.yaml). If neither source can confirm the pair, fail —
+# do not trust the declared pci_address alone. Then bind "driver" at
 # "pci_address" via driverctl.
 #
 # Validation runs for every entry before any binding happens, so a single
@@ -158,15 +158,20 @@ def _validate_entry(entry: dict, sys_class_net: str, device_map: dict) -> Option
 
     devices = device_map.get("devices") or {}
     mapped = devices.get(name)
-    if isinstance(mapped, dict) and mapped.get("pci") and mapped["pci"] != pci_address:
-        return (
-            f"{name}: not present in sysfs, but device_map.yaml records PCI address "
-            f"{mapped['pci']}, which does not match declared pci_address {pci_address}"
-        )
+    if isinstance(mapped, dict) and mapped.get("pci"):
+        if mapped["pci"] != pci_address:
+            return (
+                f"{name}: not present in sysfs, but device_map.yaml records PCI address "
+                f"{mapped['pci']}, which does not match declared pci_address {pci_address}"
+            )
+        return None
 
-    # Not in sysfs and either absent from device_map, or device_map agrees:
-    # nothing to cross-check against, proceed and trust the declared pci_address.
-    return None
+    # Not a physical netdev and no device_map PCI for this name: do not trust
+    # the declared address (typo / bridge name / empty map could rebind the wrong NIC).
+    return (
+        f"{name}: not a physical netdev in sysfs and no matching PCI entry in "
+        f"device_map.yaml; cannot confirm pci_address {pci_address}"
+    )
 
 
 def validate_interfaces(interfaces: list, sys_class_net: str, device_map: dict) -> List[str]:
